@@ -1,0 +1,150 @@
+---
+title: "Capstone Data Science Project"
+author: "Pedro Medeiros"
+date: "`r Sys.Date()`"
+output: xaringan::moon_reader
+theme: "solarized"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## R Markdown
+
+The Text Prediction Shiny App is designed to predict the next word based on user input. Built using natural language processing techniques, this interactive web application leverages text analysis to provide real-time word suggestions, enhancing text composition efficiency.
+
+This presentation is the Final Project of the Data Science Capstone course.
+
+The Shiny application is available at https://pm-amora.shinyapps.io/R_Capstone/
+
+The Shiny app source code is available at https://github.com/pm-amora/DS_Capstone
+
+---
+
+## How the App works?
+
+User Input: Allows users to enter a phrase or partial sentence.
+
+Word Prediction: Displays the most probable next word based on frequency analysis.
+
+Interactive Interface: Simple and intuitive UI for seamless user experience.
+
+The app predicts the most likely next word using Natural Language Processing (NLP) techniques, relying on n-grams, a common method for word prediction. 
+
+The sidebar panel contains interactive input by means of user's text input and it will generate the most probable next word.
+
+---
+
+## User Interface
+
+```{r, echo = TRUE, warning = FALSE, message=FALSE}
+# Load required libraries
+library(shiny)
+library(shinythemes)
+library(tm)
+library(ngram)
+
+ui <- fluidPage(
+  theme = shinytheme("united"),
+  
+  # Application title
+  titlePanel("Next Word Prediction App"),
+  
+  # Sidebar layout with input and output definitions
+  sidebarLayout(
+    sidebarPanel(
+      textInput("inputText", "Enter a phrase:", value = ""),
+      actionButton("predictButton", "Predict Next Word"),
+      br(),
+      br(),
+      h4("Instructions:"),
+      p("1. Enter a phrase in the text box above."),
+      p("2. Click the 'Predict Next Word' button to see the predicted next word."),
+      p("3. The app will display the most likely next word based on the n-gram model.")
+    ),
+    
+    # Main panel for displaying outputs
+    mainPanel(
+      h3("Predicted Next Word:"),
+      verbatimTextOutput("prediction"),
+      br(),
+      h4("How it works:"),
+      p("The app uses an n-gram model to predict the next word. It first looks for the most common trigram that matches the input phrase. If no trigram is found, it falls back to bigrams and then unigrams.")
+    )
+  )
+)
+```
+
+---
+
+## Server Code
+
+```{r, echo = TRUE, warning = FALSE, message=FALSE}
+#Load required libraries
+library(RWeka)
+
+# Load the preprocessed corpus
+corpus <- readRDS("data/R_Capstone/final/en_US/en_US.corpus.rds")
+unigramModel <- readRDS("unigramModel.rds")
+bigramModel <- readRDS("bigramModel.rds")
+trigramModel <- readRDS("trigramModel.rds")
+
+# Function to generate n-grams
+generateNgrams <- function(corpus, n) {
+  ngramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = n, max = n))
+  tdm <- TermDocumentMatrix(corpus, control = list(tokenize = ngramTokenizer))
+  ngramFreq <- sort(rowSums(as.matrix(tdm)), decreasing = TRUE)
+  ngramFreq <- data.frame(word = names(ngramFreq), freq = ngramFreq, stringsAsFactors = FALSE)
+  return(ngramFreq)
+}
+
+# Function to predict the next word
+predictNextWord <- function(inputText) {
+  # Clean the input text
+  inputText <- tolower(inputText)
+  inputText <- removePunctuation(inputText)
+  inputText <- removeNumbers(inputText)
+  inputText <- stripWhitespace(inputText)
+  
+  # Split the input text into words
+  words <- unlist(strsplit(inputText, " "))
+  
+  # Predict using trigram model
+  if (length(words) >= 2) {
+    lastTwoWords <- paste(words[length(words)-1], words[length(words)], sep = " ")
+    trigramMatch <- trigramModel[grep(paste0("^", lastTwoWords, " "), trigramModel$word), ]
+    if (nrow(trigramMatch) > 0) {
+      return(trigramMatch$word[1])
+    }
+  }
+  
+  # Predict using bigram model
+  if (length(words) >= 1) {
+    lastWord <- words[length(words)]
+    bigramMatch <- bigramModel[grep(paste0("^", lastWord, " "), bigramModel$word), ]
+    if (nrow(bigramMatch) > 0) {
+      return(bigramMatch$word[1])
+    }
+  }
+  
+   # Predict using unigram model
+  if (nrow(unigramModel) > 0) {
+    return(unigramModel$word[1])
+  }
+}
+
+# Define server logic
+server <- function(input, output) {
+  output$prediction <- renderText({
+    inputText <- input$inputText
+    if (inputText == "") {
+      return("Please enter a phrase.")
+    }
+    predictedWord <- predictNextWord(inputText)
+    return(predictedWord)
+  })
+}
+# Run the App
+shinyApp(ui = ui, server = server)
+```
